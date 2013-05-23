@@ -1,106 +1,131 @@
-#modified from "Effective Perl Programming" by Joseph N. Hall, et al.
 package TBX::Checker;
 use strict;
 use warnings;
 use autodie;
+use File::ShareDir 'dist_dir';
+use Exporter::Easy (
+	OK => [ qw(check) ],
+);
+use Path::Tiny;
+use Carp;
+use feature 'state';
 # VERSION
 
+my $TBXCHECKER = path( dist_dir('TBX-Checker'),'tbxcheck-1.2.9.jar' );
 
-# ABSTRACT: Default Module Template
+# ABSTRACT: Check TBX validity using TBXChecker
 =head1 SYNOPSIS
 
-	my $obj = TBX::Checker->new();
-	$obj->message();
+	use TBX::Checker qw(check);
+	my ($passed, $messages) = check('/path/to/file.tbx');
+	$passed && print 'ok!'
+		or print join (qq{\n}, @$messages);
 
 =head1 DESCRIPTION
 
-Description here
+This modules allows you to use the Java TBXChecker utility from Perl.
+It has one function, C<check> which returns the errors found by the
+TBXChecker (hopefully none!).
 
 =cut
 
-__PACKAGE__->new->_run unless caller;
+_run(@ARGV) unless caller;
 
 sub _run {
-	my ($application) = @_;
-	print { $application->{output_fh} }
-		$application->message;
+	my ($tbx) = @_;
+	my ($passed, $messages) = check($tbx);
+	$passed && print 'ok!'
+		or print join (qq{\n}, @$messages);
 }
 
 =head1 METHODS
 
-=head2 C<new>
+=head2 C<check>
 
-Creates a new instance of TBX::Checker
+Checks the validity of the given TBX file. Returns a list containing a
+boolean representing the validity of the input TBX and an array reference
+containing messages printed by TBXChecker.
+
+Arguments: file to be checked, followed by named arguments accepted by TBXChecker.
+For example: C<check('file.tbx', lang => 'fr')>. The allowed parameters are listed below:
+
+    loglevel      Increase level of output while processing.
+                         OFF     => Error code only.
+                         SEVERE  => Error code only.
+                         WARNING => Valid or invalid message (default).
+                         INFO    => Location of files used in processing.
+                         CONFIG  => .
+                         FINE    => .
+                         FINER   => .
+                         FINEST  => .
+                         ALL     => All logging messages.
+    lang           ISO-639 lowercase two-letter language code.
+    country        ISO-3166 uppercase two-letter country code.
+    variant
+    system         System ID to use for relative paths in document.
+                     Default: Use the directory where the file is located.
+    version        Displays version information and quit.
+    environment    Add the environmental conditions on startup to the messages.
 
 =cut
 
-sub new {
-	my ($class) = @_;
-	my $application = bless {}, $class;
-	$application->_init;
-	return $application;
-}
-
-sub _init {
-	my ($application) = @_;
-	$application->{output_fh} = \*STDOUT;
-	$application->{input_fh} = \*STDIN;
-	return;
-}
-
-=head2 C<output_fh>
-
-Input: filehandle or filename
-
-Sets the filehandle for this object to print to.
-
-=cut
-
-sub output_fh {
-	my ( $application, $fh ) = @_;
-	if ($fh) {
-		if(ref($fh) eq 'GLOB'){
-			$application->{output_fh} = $fh;
-		}
-		else{
-			open my $fh2, '>', $fh;
-			$application->{output_fh} = $fh2;
-		}
+sub check {
+	my ($file, %args) = @_;
+	#check the parameters. TODO: use a module or something for param checking
+	croak 'missing file argument. Usage: TBX::Checker::check($file, %args)'
+		unless $file;
+	croak "$file doesn't exist!"
+		unless -e $file;
+	state $allowed_params = [ qw(
+		loglevel lang country variant system version environment) ];
+	foreach my $param (keys %args){
+		croak "unknown paramter: $param"
+			unless grep $param, @$allowed_params;
 	}
-	return $application->{output_fh};
-}
-
-=head2 C<input_fh>
-
-Input: filehandle or filename
-
-Sets the filehandle for this object to read from.
-
-=cut
-
-sub input_fh {
-	my ( $application, $fh ) = @_;
-	if ($fh) {
-		if(ref($fh) eq 'GLOB'){
-			$application->{input_fh} = $fh;
-		}
-		else{
-			open my $fh2, '<', $fh;
-			$application->{input_fh} = $fh2;
-		}
+	state $allowed_levels = [ qw(
+		OFF SEVERE WARNING INFO CONFIG FINE FINER FINEST ALL) ];
+	if(exists $args{loglevel}){
+		grep $args{loglevel}, @$allowed_levels
+			or croak "Loglevel doesn't exist: $args{loglevel}";
 	}
-	return $application->{input_fh};
+	$args{loglevel} ||= q{OFF};
+	#due to TBXChecker bug, file must be relative to the jar location
+	$file = path($file)->relative($TBXCHECKER);
+
+	#shell out to the jar with the given arguments.
+	my $arg_string = join q{ }, map {"--$_=$args{$_}"} keys %args;
+	my $command = qq{java -cp ".;$TBXCHECKER" org.ttt.salt.Main $arg_string "$file"};
+	# warn $command;
+	my $messages = `$command`;
+
+	#check if file was valid
+	$messages = [ split /\v+/, $messages ];
+	my $valid = _is_valid($messages);
+	return ($valid, $messages);
 }
 
-=head2 C<other_subroutines>
-
-PUT MORE SUBROUTINES HERE
-
-=cut
-
-sub other_subroutines {
-	"YOUR WORK STARTS HERE\n";
+#return a boolean indicating the validity of the file, given the messages
+#remove the message indicating that the file is valid (if it exists)
+sub _is_valid {
+	my ($messages) = @_;
+	#locate index of "Valid file:" message
+	my $index = 0;
+	while($index < $#$messages){
+		continue if $$messages[$index] =~ /^Valid file: /;
+		$index++;
+	}
+	#if message not found, file was invalid
+	if($index > $#$messages){
+		return 0;
+	}
+	#remove message and return true
+	splice(@$messages, $index, 1);
+	return 1;
 }
 
 1;
 
+=head1 SEE ALSO
+
+The TBXChecker project is located on SourceForge in a
+project called L<tbxutil|http://sourceforge.net/projects/tbxutil/>.
