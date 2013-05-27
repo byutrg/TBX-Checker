@@ -12,7 +12,7 @@ use feature 'state';
 use Capture::Tiny 'capture_merged';
 # VERSION
 
-my $TBXCHECKER = path( dist_dir('TBX-Checker'),'tbxcheck-1.2.9.jar' );
+my $TBXCHECKER = path( dist_dir('TBX-Checker'),'tbxcheck-1_2_9.jar' );
 
 # ABSTRACT: Check TBX validity using TBXChecker
 =head1 SYNOPSIS
@@ -76,7 +76,8 @@ sub check {
 	my $command = _process_args(@args);
 
 	# capture STDOUT and STDERR from jar call into $output
-	my ($output, $result) = capture_merged {system($command)};
+	# my ($output, $result) = capture_merged {system($command)};
+	my $output = `$command`;
 	my @messages = split /\v+/, $output;
 	my $valid = _is_valid(\@messages);
 	return ($valid, \@messages);
