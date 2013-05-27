@@ -72,6 +72,20 @@ For example: C<check('file.tbx', loglevel => 'ALL')>. The allowed parameters are
 =cut
 
 sub check {
+	my @args = @_;
+	my ($file, %args) = _process_args(@args);
+
+	#shell out to the jar with the given arguments.
+	my $arg_string = join q{ }, map {"--$_=$args{$_}"} keys %args;
+	my $command = qq{java -cp ".;$TBXCHECKER" org.ttt.salt.Main $arg_string "$file"};
+	# capture STDOUT and STDERR from jar call into $output
+	my ($output, $result) = capture_merged {system($command)};
+	my @messages = split /\v+/, $output;
+	my $valid = _is_valid(\@messages);
+	return ($valid, \@messages);
+}
+
+sub _process_args {
 	my ($file, %args) = @_;
 	#check the parameters. TODO: use a module or something for param checking
 	croak 'missing file argument. Usage: TBX::Checker::check($file, %args)'
@@ -91,17 +105,9 @@ sub check {
 			or croak "Loglevel doesn't exist: $args{loglevel}";
 	}
 	$args{loglevel} ||= q{OFF};
-	#due to TBXChecker bug, file must be relative to the jar location
+	#due to TBXChecker bug, file must be relative to cwd
 	$file = path($file)->relative;
-
-	#shell out to the jar with the given arguments.
-	my $arg_string = join q{ }, map {"--$_=$args{$_}"} keys %args;
-	my $command = qq{java -cp ".;$TBXCHECKER" org.ttt.salt.Main $arg_string "$file"};
-	# capture STDOUT and STDERR from jar call into $output
-	my ($output, $result) = capture_merged {system($command)};
-	my @messages = split /\v+/, $output;
-	my $valid = _is_valid(\@messages);
-	return ($valid, \@messages);
+	return ($file, %args);
 }
 
 #return a boolean indicating the validity of the file, given the messages
