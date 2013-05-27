@@ -73,11 +73,8 @@ For example: C<check('file.tbx', loglevel => 'ALL')>. The allowed parameters are
 
 sub check {
 	my @args = @_;
-	my ($file, %args) = _process_args(@args);
+	my $command = _process_args(@args);
 
-	#shell out to the jar with the given arguments.
-	my $arg_string = join q{ }, map {"--$_=$args{$_}"} keys %args;
-	my $command = qq{java -cp ".;$TBXCHECKER" org.ttt.salt.Main $arg_string "$file"};
 	# capture STDOUT and STDERR from jar call into $output
 	my ($output, $result) = capture_merged {system($command)};
 	my @messages = split /\v+/, $output;
@@ -85,6 +82,7 @@ sub check {
 	return ($valid, \@messages);
 }
 
+#process arguments and return the command to be run
 sub _process_args {
 	my ($file, %args) = @_;
 	#check the parameters. TODO: use a module or something for param checking
@@ -107,7 +105,11 @@ sub _process_args {
 	$args{loglevel} ||= q{OFF};
 	#due to TBXChecker bug, file must be relative to cwd
 	$file = path($file)->relative;
-	return ($file, %args);
+
+	#shell out to the jar with the given arguments.
+	my $arg_string = join q{ }, map {"--$_=$args{$_}"} keys %args;
+	my $command = qq{java -cp ".;$TBXCHECKER" org.ttt.salt.Main $arg_string "$file"};
+	return $command;
 }
 
 #return a boolean indicating the validity of the file, given the messages
