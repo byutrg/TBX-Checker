@@ -76,8 +76,8 @@ sub check {
 	my $command = _process_args(@args);
 
 	# capture STDOUT and STDERR from jar call into $output
-	# my ($output, $result) = capture_merged {system($command)};
-	my $output = `$command`;
+	my ($output, $result) = capture_merged {system($command)};
+	# my $output = `$command`;
 	my @messages = split /\v+/, $output;
 	my $valid = _is_valid(\@messages);
 	return ($valid, \@messages);
