@@ -92,7 +92,7 @@ sub check {
 	}
 	$args{loglevel} ||= q{OFF};
 	#due to TBXChecker bug, file must be relative to the jar location
-	$file = path($file)->relative($TBXCHECKER);
+	$file = path($file)->relative;
 
 	#shell out to the jar with the given arguments.
 	my $arg_string = join q{ }, map {"--$_=$args{$_}"} keys %args;
