@@ -9,6 +9,7 @@ use Exporter::Easy (
 use Path::Tiny;
 use Carp;
 use feature 'state';
+use Capture::Tiny 'capture_merged';
 # VERSION
 
 my $TBXCHECKER = path( dist_dir('TBX-Checker'),'tbxcheck-1.2.9.jar' );
@@ -29,25 +30,26 @@ TBXChecker (hopefully none!).
 
 =cut
 
+#When run as a script instead of used as a module: check the input file and print the results
 _run(@ARGV) unless caller;
-
 sub _run {
 	my ($tbx) = @_;
 	my ($passed, $messages) = check($tbx);
-	$passed && print 'ok!'
+	($passed && print 'ok!')
 		or print join (qq{\n}, @$messages);
+	return;
 }
 
 =head1 METHODS
 
 =head2 C<check>
 
-Checks the validity of the given TBX file. Returns a list containing a
-boolean representing the validity of the input TBX and an array reference
-containing messages printed by TBXChecker.
+Checks the validity of the given TBX file. Returns 2 elements: a
+boolean representing the validity of the input TBX, and an array reference
+containing messages returned by TBXChecker.
 
 Arguments: file to be checked, followed by named arguments accepted by TBXChecker.
-For example: C<check('file.tbx', lang => 'fr')>. The allowed parameters are listed below:
+For example: C<check('file.tbx', loglevel => 'ALL')>. The allowed parameters are listed below:
 
     loglevel      Increase level of output while processing.
                          OFF     => Error code only.
@@ -60,12 +62,12 @@ For example: C<check('file.tbx', lang => 'fr')>. The allowed parameters are list
                          FINEST  => .
                          ALL     => All logging messages.
     lang           ISO-639 lowercase two-letter language code.
-    country        ISO-3166 uppercase two-letter country code.
+    country      ISO-3166 uppercase two-letter country code.
     variant
-    system         System ID to use for relative paths in document.
-                     Default: Use the directory where the file is located.
-    version        Displays version information and quit.
-    environment    Add the environmental conditions on startup to the messages.
+    system       System ID to use for relative paths in document.
+                         Default: Uses the directory where the file is located.
+    version       Displays version information and quits.
+    environment    Adds the environmental conditions on startup to the messages.
 
 =cut
 
@@ -80,12 +82,12 @@ sub check {
 		loglevel lang country variant system version environment) ];
 	foreach my $param (keys %args){
 		croak "unknown paramter: $param"
-			unless grep $param, @$allowed_params;
+			unless grep { $_ eq $param } @$allowed_params;
 	}
 	state $allowed_levels = [ qw(
 		OFF SEVERE WARNING INFO CONFIG FINE FINER FINEST ALL) ];
 	if(exists $args{loglevel}){
-		grep $args{loglevel}, @$allowed_levels
+		grep { $_ eq $args{loglevel} } @$allowed_levels
 			or croak "Loglevel doesn't exist: $args{loglevel}";
 	}
 	$args{loglevel} ||= q{OFF};
@@ -95,13 +97,11 @@ sub check {
 	#shell out to the jar with the given arguments.
 	my $arg_string = join q{ }, map {"--$_=$args{$_}"} keys %args;
 	my $command = qq{java -cp ".;$TBXCHECKER" org.ttt.salt.Main $arg_string "$file"};
-	# warn $command;
-	my $messages = `$command`;
-
-	#check if file was valid
-	$messages = [ split /\v+/, $messages ];
-	my $valid = _is_valid($messages);
-	return ($valid, $messages);
+	# capture STDOUT and STDERR from jar call into $output
+	my ($output, $result) = capture_merged {system($command)};
+	my @messages = split /\v+/, $output;
+	my $valid = _is_valid(\@messages);
+	return ($valid, \@messages);
 }
 
 #return a boolean indicating the validity of the file, given the messages
@@ -110,8 +110,8 @@ sub _is_valid {
 	my ($messages) = @_;
 	#locate index of "Valid file:" message
 	my $index = 0;
-	while($index < $#$messages){
-		continue if $$messages[$index] =~ /^Valid file: /;
+	while($index < @$messages){
+		last if $$messages[$index] =~ /^Valid file: /;
 		$index++;
 	}
 	#if message not found, file was invalid
