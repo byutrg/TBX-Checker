@@ -48,8 +48,10 @@ Checks the validity of the given TBX file. Returns 2 elements: a
 boolean representing the validity of the input TBX, and an array reference
 containing messages returned by TBXChecker.
 
-Arguments: file to be checked, followed by named arguments accepted by TBXChecker.
-For example: C<check('file.tbx', loglevel => 'ALL')>. The allowed parameters are listed below:
+Arguments: a string containing a TBX file path, or a string pointer containing
+TBX data to be checked, followed by named arguments accepted by TBXChecker.
+For example: C<check('file.tbx', loglevel => 'ALL')>. The allowed parameters
+are listed below:
 
     loglevel      Increase level of output while processing.
                          OFF     => Error code only.
@@ -69,48 +71,73 @@ For example: C<check('file.tbx', loglevel => 'ALL')>. The allowed parameters are
     version       Displays version information and quits.
     environment    Adds the environmental conditions on startup to the messages.
 
+Keep in mind that if you use a string pointer instead of a file name, all
+relative URI's will be resolved from the current working directory.
+
 =cut
 
 sub check {
-	my @args = @_;
-	my $command = _process_args(@args);
+	my ($data, @args) = @_;
+
+    croak 'missing data argument. Usage: TBX::Checker::check($data, %args)'
+        unless $data;
+
+    my $file = _get_file($data);
+    #due to TBXChecker bug, file must be relative to cwd
+    my $rel_file = $file->relative;
+    my $arg_string = _get_arg_string(@args);
+
+    my $command = qq{java -cp ".;$TBXCHECKER" org.ttt.salt.Main } .
+        qq{$arg_string "$rel_file"};
 
 	# capture STDOUT and STDERR from jar call into $output
 	my ($output, $result) = capture_merged {system($command)};
-	# my $output = `$command`;
 	my @messages = split /\v+/, $output;
 	my $valid = _is_valid(\@messages);
 	return ($valid, \@messages);
 }
 
-#process arguments and return the command to be run
-sub _process_args {
-	my ($file, %args) = @_;
-	#check the parameters. TODO: use a module or something for param checking
-	croak 'missing file argument. Usage: TBX::Checker::check($file, %args)'
-		unless $file;
-	croak "$file doesn't exist!"
-		unless -e $file;
-	state $allowed_params = [ qw(
-		loglevel lang country variant system version environment) ];
-	foreach my $param (keys %args){
-		croak "unknown paramter: $param"
-			unless grep { $_ eq $param } @$allowed_params;
-	}
+# get a Path::Tiny object for the file to give to the TBXChecker
+sub _get_file {
+    my ($data) = @_;
+    my $file;
+    #pointers are string data
+    if(ref $data eq 'SCALAR'){
+        $file = Path::Tiny->tempfile;
+        #TODO: will this get encodings right?
+        $file->append_raw($$data);
+    #everything else should be string paths
+    }else{
+        $file = path($data);
+        croak "$file doesn't exist!"
+            unless $file->exists;
+    }
+    return $file;
+}
+
+# process arguments and return the command to be run and the file
+# being processed (so temp files aren't destroyed by leaving scope)
+sub _get_arg_string {
+	my (%args) = @_;
+
+	# check the parameters.
+    # TODO: use a module or something for param checking
+    state $allowed_params = [ qw(
+        loglevel lang country variant system version environment) ];
 	state $allowed_levels = [ qw(
 		OFF SEVERE WARNING INFO CONFIG FINE FINER FINEST ALL) ];
+    foreach my $param (keys %args){
+        croak "unknown paramter: $param"
+            unless grep { $_ eq $param } @$allowed_params;
+    }
 	if(exists $args{loglevel}){
 		grep { $_ eq $args{loglevel} } @$allowed_levels
 			or croak "Loglevel doesn't exist: $args{loglevel}";
 	}
 	$args{loglevel} ||= q{OFF};
-	#due to TBXChecker bug, file must be relative to cwd
-	$file = path($file)->relative;
 
-	#shell out to the jar with the given arguments.
-	my $arg_string = join q{ }, map {"--$_=$args{$_}"} keys %args;
-	my $command = qq{java -cp ".;$TBXCHECKER" org.ttt.salt.Main $arg_string "$file"};
-	return $command;
+	#combine the options into a string that TBXChecker will understand
+	return join q{ }, map {"--$_=$args{$_}"} keys %args;
 }
 
 #return a boolean indicating the validity of the file, given the messages
