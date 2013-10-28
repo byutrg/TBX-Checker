@@ -50,7 +50,7 @@ sub check {
         qq{$arg_string "$rel_file"};
 
 	# capture STDOUT and STDERR from jar call into $output
-	my ($output, $result) = capture_merged {system($command)};
+	my $output = capture_merged {system($command)};
 	my @messages = split /\v+/, $output;
 	my $valid = _is_valid(\@messages);
 	return ($valid, \@messages);
