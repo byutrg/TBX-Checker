@@ -390,11 +390,6 @@
             "version" : "0.006"
          },
          {
-            "class" : "Dist::Zilla::Plugin::TestRelease",
-            "name" : "TestRelease",
-            "version" : "4.300039"
-         },
-         {
             "class" : "Dist::Zilla::Plugin::CheckPrereqsIndexed",
             "name" : "CheckPrereqsIndexed",
             "version" : "0.008"
