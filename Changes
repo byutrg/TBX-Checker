@@ -1,6 +1,6 @@
 Revision history for TBX-Checker
 
-0.03      2013-10-28 16:01:36 America/Los_Angeles
+0.03      2013-10-28 17:31:50 America/Los_Angeles
     Check function now works with string pointers.
     Updated repository location.
     Removed unused variable.
